@@ -2,6 +2,8 @@ local M = {}
 
 local dap = require("dap")
 
+local running = false
+
 local options = {
 	vdpath = "/usr/local/bin/vd",
 }
@@ -18,9 +20,40 @@ function M.setup(opts)
 end
 
 function M.run()
+  if running then
+    vim.notify("Already running", vim.log.levels.ERROR)
+    return
+  end
 	local selected = get_visual_selection()[1]
-	dap.repl.execute(string.format([[%s.to_parquet(".visidf")]], selected))
-	Snacks.terminal(string.format("%s -f parquet .visidf", options.vdpath))
+  os.remove(".visidf")
+  dap.repl.execute(selected .. [[.iloc[:0].to_parquet(".visidf")]]) -- test if the dataframe is valid
+
+  local function check_test_df()
+		if not io.open(".visidf") then
+			vim.notify("Failed to load dataframe", vim.log.levels.ERROR)
+			return
+		end
+    running = true
+		os.remove(".visidf")
+		dap.repl.execute("import shutil;" .. selected .. [[.to_parquet(".visidf.tmp"); shutil.move(".visidf.tmp", ".visidf")]])
+
+    local retries = 30
+    local function check_df()
+      if io.open(".visidf") then
+        Snacks.terminal(options.vdpath .. " -f parquet .visidf")
+        running = false
+      elseif retries > 0 then
+        retries = retries - 1
+        vim.defer_fn(check_df, 100)
+      else
+        vim.notify("Failed to load dataframe", vim.log.levels.ERROR)
+        running = false
+      end
+    end
+    vim.notify("Loading dataframe...", vim.log.levels)
+    vim.defer_fn(check_df, 100)
+  end
+  vim.defer_fn(check_test_df, 50)
 end
 
 return M
