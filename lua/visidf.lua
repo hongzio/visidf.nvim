@@ -20,40 +20,68 @@ function M.setup(opts)
 end
 
 function M.run()
-  if running then
-    vim.notify("Already running", vim.log.levels.ERROR)
-    return
-  end
+	if running then
+		vim.notify("Already running", vim.log.levels.ERROR)
+		return
+	end
 	local selected = get_visual_selection()[1]
-  os.remove(".visidf")
-  dap.repl.execute(selected .. [[.iloc[:0].to_parquet(".visidf")]]) -- test if the dataframe is valid
+	local ok, _ = os.remove(".visidf")
+	if ok then
+		vim.notify("Removed existing .visidf", vim.log.levels.INFO)
+	end
 
-  local function check_test_df()
+	dap.repl.execute([[
+try:
+  import pandas as pd
+  import numpy as np
+  if isinstance(]] .. selected .. [[, pd.DataFrame):
+    ]] .. selected .. [[.iloc[:0].to_parquet(".visidf")
+  elif isinstance(]] .. selected .. [[, np.ndarray):
+    pd.DataFrame(]] .. selected .. [[).iloc[:0].to_parquet(".visidf")
+except Exception as e:
+  print(e)
+]])
+
+	local function check_test_df()
 		if not io.open(".visidf") then
 			vim.notify("Failed to load dataframe", vim.log.levels.ERROR)
 			return
 		end
-    running = true
+		running = true
 		os.remove(".visidf")
-		dap.repl.execute("import shutil;" .. selected .. [[.to_parquet(".visidf.tmp"); shutil.move(".visidf.tmp", ".visidf")]])
+		dap.repl.execute([[
+try:
+  import shutil
+  if isinstance(]] .. selected .. [[, pd.DataFrame):
+    ]] .. selected .. [[.to_parquet(".visidf.tmp")
+  elif isinstance(]] .. selected .. [[, np.ndarray):
+    pd.DataFrame(]] .. selected .. [[).to_parquet(".visidf.tmp")
+  shutil.move(".visidf.tmp", ".visidf")
+except Exception as e:
+  print(e)
+]])
 
-    local retries = 30
-    local function check_df()
-      if io.open(".visidf") then
-        Snacks.terminal(options.vdpath .. " -f parquet .visidf")
-        running = false
-      elseif retries > 0 then
-        retries = retries - 1
-        vim.defer_fn(check_df, 100)
-      else
-        vim.notify("Failed to load dataframe", vim.log.levels.ERROR)
-        running = false
-      end
-    end
-    vim.notify("Loading dataframe...", vim.log.levels)
-    vim.defer_fn(check_df, 100)
-  end
-  vim.defer_fn(check_test_df, 50)
+		local retries = 30
+		local function check_df()
+			if io.open(".visidf") then
+				Snacks.terminal(options.vdpath .. " -f parquet .visidf")
+				running = false
+			elseif retries > 0 then
+				retries = retries - 1
+				vim.defer_fn(check_df, 100)
+			else
+				vim.notify("Failed to load dataframe", vim.log.levels.ERROR)
+				running = false
+			end
+		end
+		vim.notify("Loading dataframe...", vim.log.levels)
+		vim.defer_fn(check_df, 100)
+	end
+	vim.defer_fn(check_test_df, 50)
+end
+
+function M.prev()
+	Snacks.terminal(options.vdpath .. " -f parquet .visidf")
 end
 
 return M
