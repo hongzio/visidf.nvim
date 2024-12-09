@@ -5,7 +5,7 @@ local dap = require("dap")
 local running = false
 
 local options = {
-	vdpath = "/usr/local/bin/vd",
+	vdpath = "vd",
 }
 
 local function get_visual_selection()
