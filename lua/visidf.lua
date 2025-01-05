@@ -3,6 +3,7 @@ local M = {}
 local dap = require("dap")
 
 local running = false
+local visidf_path = vim.fn.getcwd() .. "/.visidf"
 
 local options = {
 	vdpath = "vd",
@@ -25,25 +26,26 @@ function M.run()
 		return
 	end
 	local selected = get_visual_selection()[1]
-	local ok, _ = os.remove(".visidf")
+	local ok, _ = os.remove(visidf_path)
 	if ok then
 		vim.notify("Removed existing .visidf", vim.log.levels.INFO)
 	end
 
+  -- Check if the selected text is a valid dataframe or numpy array
 	dap.repl.execute([[
 try:
   import pandas as pd
   import numpy as np
   if isinstance(]] .. selected .. [[, pd.DataFrame):
-    ]] .. selected .. [[.iloc[:0].to_parquet(".visidf")
+    ]] .. selected .. [[.iloc[:0].to_parquet("]] .. visidf_path .. [[")
   elif isinstance(]] .. selected .. [[, np.ndarray):
-    pd.DataFrame(]] .. selected .. [[).iloc[:0].to_parquet(".visidf")
+    pd.DataFrame(]] .. selected .. [[).iloc[:0].to_parquet(" ]] .. visidf_path .. [[")
 except Exception as e:
   print(e)
 ]])
 
 	local function check_test_df()
-		if not io.open(".visidf") then
+		if not io.open(visidf_path) then
 			vim.notify("Failed to load dataframe", vim.log.levels.ERROR)
 			return
 		end
@@ -53,10 +55,10 @@ except Exception as e:
 try:
   import shutil
   if isinstance(]] .. selected .. [[, pd.DataFrame):
-    ]] .. selected .. [[.to_parquet(".visidf.tmp")
+    ]] .. selected .. [[.to_parquet("]] .. visidf_path .. [[.tmp")
   elif isinstance(]] .. selected .. [[, np.ndarray):
-    pd.DataFrame(]] .. selected .. [[).to_parquet(".visidf.tmp")
-  shutil.move(".visidf.tmp", ".visidf")
+    pd.DataFrame(]] .. selected .. [[).to_parquet("]] .. visidf_path .. [[.tmp")
+  shutil.move("]] .. visidf_path .. [[.tmp", "]] .. visidf_path .. [[")
 except Exception as e:
   print(e)
 ]])
@@ -64,7 +66,7 @@ except Exception as e:
 		local retries = 30
 		local function check_df()
 			if io.open(".visidf") then
-				Snacks.terminal(options.vdpath .. " -f parquet .visidf")
+				Snacks.terminal(options.vdpath .. " -f parquet " .. visidf_path)
 				running = false
 			elseif retries > 0 then
 				retries = retries - 1
@@ -81,7 +83,7 @@ except Exception as e:
 end
 
 function M.prev()
-	Snacks.terminal(options.vdpath .. " -f parquet .visidf")
+	Snacks.terminal(options.vdpath .. " -f parquet " .. visidf_path)
 end
 
 return M
